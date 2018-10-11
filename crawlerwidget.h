@@ -5,6 +5,8 @@
 #include <QPushButton>
 #include <QSpinBox>
 #include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QLabel>
 #include <QWidget>
 #include <QProgressBar>
 #include <QMessageBox>
@@ -21,9 +23,10 @@ public slots:
     void slotClicked();
 
 private:
-    QLineEdit *edit;
-    QPushButton *btn;
-    QSpinBox *spin;
+    QLineEdit *inputLine;
+    QLabel *statusLabel;
+    QPushButton *startButton;
+    QSpinBox *inputDepth;
     QProgressBar* progress;
     Crawler bot;
 };

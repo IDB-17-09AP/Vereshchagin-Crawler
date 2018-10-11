@@ -17,6 +17,8 @@ public:
 
 private:
     QNetworkAccessManager *manager;
+    QEventLoop loop;
+    int count_;
 };
 
 #endif // DOWNLOADERHTML_H
