@@ -8,7 +8,6 @@ CrawlerWidget::CrawlerWidget(QWidget *parent) : QWidget(parent)
     startButton = new QPushButton("Start");
     progress = new QProgressBar;
     statusLabel = new QLabel("Ready for work");
-    QLabel *inputLabel = new QLabel("Link:");
 
     inputDepth->setValue(0);
     inputDepth->setRange(0, 100);
@@ -18,8 +17,9 @@ CrawlerWidget::CrawlerWidget(QWidget *parent) : QWidget(parent)
 
     // layout settings
     QHBoxLayout* hor = new QHBoxLayout;
-    hor->addWidget(inputLabel);
+    hor->addWidget(new QLabel("Link:"));
     hor->addWidget(inputLine);
+    hor->addWidget(new QLabel("Depth:"));
     hor->addWidget(inputDepth);
     hor->addWidget(startButton);
     QVBoxLayout* ver = new QVBoxLayout;
@@ -35,14 +35,15 @@ CrawlerWidget::CrawlerWidget(QWidget *parent) : QWidget(parent)
 
 void CrawlerWidget::slotClicked()
 {
-    startButton->setEnabled(true);
     try {
+        startButton->setEnabled(false);
         statusLabel->setText("Please wait...");
         progress->reset();
         bot.setMaximumDepth(inputDepth->value());
         bot.setUrl(inputLine->text());
-        bot.start();
+        QDesktopServices::openUrl(QUrl::fromLocalFile(bot.start()));
         statusLabel->setText("All ready");
+        startButton->setEnabled(true);
     } catch (std::exception &ex) {
         QMessageBox::critical(this, "Error", QString::fromLatin1(ex.what()));
         statusLabel->setText("Error: " + QString::fromLatin1(ex.what()));
@@ -50,5 +51,4 @@ void CrawlerWidget::slotClicked()
         QMessageBox::critical(this, "Error", "Unknow error");
         statusLabel->setText("Unknow error");
     }
-    startButton->setEnabled(false);
 }

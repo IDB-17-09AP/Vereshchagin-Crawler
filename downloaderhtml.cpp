@@ -20,7 +20,7 @@ QString DownloaderHTML::getHTML(const QString &url)
             break;
     } while (count_ < 3);
 
-    if (reply->error() == QNetworkReply::TimeoutError) {
+    if (reply->error() == QNetworkReply::NetworkSessionFailedError) {
         throw std::runtime_error(reply->errorString().toStdString());
     } else if (reply->error() == QNetworkReply::NoError){
         QString str(reply->readAll());

@@ -3,10 +3,13 @@
 
 #include <QObject>
 #include <QFile>
+#include <QFileInfo>
+#include <QDir>
 #include <QRegExp>
 #include <QSet>
 #include <QThread>
-#include <QDataStream>
+#include <QTextStream>
+#include <QMap>
 #include <memory>
 
 #include "downloaderhtml.h"
@@ -23,7 +26,7 @@ public:
     void setDelay(const int delay);
     void setMaximumDepth(const int depth);
     void setUrl(const QString &url);
-    void start();
+    QString start();
 
 signals:
     void signalProgress(int progress);
@@ -32,10 +35,10 @@ private:
     void recursionStart(const int depth, const QString &domen, const std::shared_ptr<RobotsFile> &file = nullptr);
     QString normalizationLink(const QString &link, const QString &domen);
     void parsingText(QString &text);
-    void stemmingText(QString &text);
+    QMap<QString, int> stemmingText(QString &text);
 
     QSet<QString> links;
-    QFile result;
+    QTextStream result;
     DownloaderHTML downloader;
     QString url_;
     int delay_;

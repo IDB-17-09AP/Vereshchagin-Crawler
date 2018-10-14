@@ -25,18 +25,19 @@ void Crawler::setUrl(const QString &url)
     url_ = url;
 }
 
-void Crawler::start()
+QString Crawler::start()
 {
     try {
-        result.setFileName("result.txt");
-        if (!result.open(QFile::WriteOnly | QFile::Text | QFile::Append | QFile::Truncate))
-            throw std::logic_error(result.errorString().toStdString());
+        QFile file("result.txt");
+        if (!file.open(QFile::WriteOnly | QFile::Text | QFile::Append | QFile::Truncate))
+            throw std::logic_error(file.errorString().toStdString());
 
+        result.setDevice(&file);
         recursionStart(0, url_);
         emit signalProgress(100);
-        result.close();
+        file.close();
+        return QFileInfo(file).absoluteDir().absolutePath();
     } catch (...) {
-        result.close();
         throw;
     }
 }
@@ -53,8 +54,11 @@ void Crawler::recursionStart(const int depth, const QString &domen,
         std::shared_ptr<RobotsFile> file_;
         if (file != nullptr)
             file_ = file;
-        else
-            file_ = std::make_shared<RobotsFile>(domen);
+        else {
+            QRegExp reg(R"reg(\w{3,5}\:\/\/(\w+\.\w{2,4}))reg");
+            reg.indexIn(domen);
+            file_ = std::make_shared<RobotsFile>(domen.left(reg.matchedLength()));
+        }
 
         int first = 0, second = 0;
         while (true) {
@@ -82,13 +86,16 @@ void Crawler::recursionStart(const int depth, const QString &domen,
             }
         }
     }
-    parsingText(data);
-    stemmingText(data);
+    parsingText(data);    
+    QMap<QString, int> resultData(stemmingText(data));
 
-    result.write(data.toUtf8());
-    result.write("<end>");
-    result.write(domen.toUtf8());
-    result.write("\n");
+    // write
+    result << domen << " ";
+
+    for (auto it = resultData.constBegin(); it != resultData.constEnd(); ++it)
+        result << it.key() << " " << it.value() << " ";
+
+    result << "<endLine>\n";
 }
 
 QString Crawler::normalizationLink(const QString &link, const QString& domen)
@@ -108,6 +115,18 @@ QString Crawler::normalizationLink(const QString &link, const QString& domen)
 
     if (!str.contains(QRegExp("https?")))
         return "";     // не http(s) ссылка
+
+    int index;
+    if ((index = str.indexOf(QRegExp(R"(?:\:\d{2,4})")) + 1) != 0) {
+        QString temp = str.left(index);     // ссылка без порта
+        if (links.contains(temp))           // уже есть
+            return "";
+    }
+
+    str.replace("www.", "");    // убираем www.
+
+    if (str[str.size() - 1] == "/")
+        str.remove(str.size() - 1, 1);
 
     if (links.contains(str))
         return "";     // такая ссылка уже была
@@ -131,12 +150,13 @@ void Crawler::parsingText(QString &text)
     text.replace(reg, "");  // вырезаем спец. символы
 }
 
-void Crawler::stemmingText(QString &text)
+QMap<QString, int> Crawler::stemmingText(QString &text)
 {
-    QString data, word;
-
     int index = 0;
     QRegExp reg("([А-Яа-я])+");
+
+    QString word;
+    QMap<QString, int> data;
 
     while (true) {
         index = reg.indexIn(text, index);
@@ -148,9 +168,11 @@ void Crawler::stemmingText(QString &text)
         // Cтемминг
         // https://ru.wikipedia.org/wiki/Стеммер_Портера
 
-        data += Stemming::getStemmedForm(word) + " ";
+        word = Stemming::getStemmedForm(word);
+        if (word.size())
+            ++data[word];
     }
-    text = std::move(data);
+    return data;
 }
 
 QString Stemming::getStemmedForm(QString &word)
@@ -176,15 +198,12 @@ QString Stemming::getStemmedForm(QString &word)
     if (rv.indexOf("и", rv.size() - 1) != -1)
         rv = rv.remove(rv.size() - 1, 1);
 
+    reg.setPattern(VOWER + "\\w");
+    index = reg.indexIn(rv);
+    QString r2 = rv.mid(index + 2);
 
-    {
-        QRegExp reg(VOWER + "\\w");
-        int index = reg.indexIn(rv);
-        QString r2 = rv.mid(index + 2);
-
-        if (removeEndingWord(r2, DERIVATIONAL))
-            removeEndingWord(rv, DERIVATIONAL);
-    }
+    if (removeEndingWord(r2, DERIVATIONAL))
+        removeEndingWord(rv, DERIVATIONAL);
 
     if (rv.indexOf("нн", rv.size() - 2) != -1)
         rv = rv.remove(rv.size() - 2, 2);
@@ -297,6 +316,7 @@ RobotsFile::RobotsFile(const QString &domen) : delay_(3)
 {
     DownloaderHTML loader;
     reg.setPatternSyntax(QRegExp::Wildcard);
+    qDebug() << "Read from: " << domen + "/robots.txt";
     QString data = loader.getHTML(domen + "/robots.txt");
     QString str = "";
 
@@ -347,10 +367,8 @@ bool RobotsFile::disallow(const QString &url)
     for (const auto& var : disallow_) {
         reg.setPattern(var);
         index = reg.indexIn(url);
-        if (index != -1) {
-            qDebug() << "Wrong:" << url;
+        if (index != -1)
             return true;
-        }
     }
     return false;
 }
