@@ -29,7 +29,8 @@ QString Crawler::start()
 {
     try {
         QFile file("result.txt");
-        if (!file.open(QFile::WriteOnly | QFile::Text | QFile::Append | QFile::Truncate))
+
+        if (!file.open(QFile::WriteOnly | QFile::Text))
             throw std::logic_error(file.errorString().toStdString());
 
         result.setDevice(&file);
@@ -47,7 +48,7 @@ void Crawler::recursionStart(const int depth, const QString &domen,
 {
     QString data(downloader.getHTML(domen));
 
-    if (data.size() == 0)
+    if (data.isEmpty())
         return;
 
     if (depth < depth_) {
@@ -69,16 +70,16 @@ void Crawler::recursionStart(const int depth, const QString &domen,
             first += 6;
             second = data.indexOf("\"", first);
 
-            QString str = (normalizationLink(data.mid(first, second - first), domen));
+            QString str = (normalizationLink(data.mid(first, second - first), file_->domen()));
 
             if (depth == 0)
                 emit signalProgress(static_cast<int>((first * 100) / data.size()));
 
-            if (str.size()) {
+            if (!str.isEmpty()) {
                 if (file_->allow(str) || !file_->disallow(str)) {
-                    QThread::sleep(delay_);
+                    QThread::sleep(static_cast<ulong>(delay_));
                     qDebug() << "Link: " << str;
-                    if (str.contains(domen))
+                    if (str.contains(file_->domen()))
                         recursionStart(depth + 1, str, file_);
                     else
                         recursionStart(depth + 1, str);
@@ -87,7 +88,7 @@ void Crawler::recursionStart(const int depth, const QString &domen,
         }
     }
     parsingText(data);    
-    QMap<QString, int> resultData(stemmingText(data));
+    QMap<QString, int> resultData(stemmingAndIndexing(data));
 
     // write
     result << domen << " ";
@@ -102,7 +103,7 @@ QString Crawler::normalizationLink(const QString &link, const QString& domen)
 {
     QString str("");
 
-    if (link.size() == 0)
+    if (link.isEmpty())
         return str;     // пустая ссылка
 
     if (link.contains(QRegExp(".css|.pdf|.png|.docx")))
@@ -124,9 +125,7 @@ QString Crawler::normalizationLink(const QString &link, const QString& domen)
     }
 
     str.replace("www.", "");    // убираем www.
-
-    if (str[str.size() - 1] == "/")
-        str.remove(str.size() - 1, 1);
+    str.replace(QRegularExpression("(?<!:)(\\/\\/)"), "/");
 
     if (links.contains(str))
         return "";     // такая ссылка уже была
@@ -150,7 +149,7 @@ void Crawler::parsingText(QString &text)
     text.replace(reg, "");  // вырезаем спец. символы
 }
 
-QMap<QString, int> Crawler::stemmingText(QString &text)
+QMap<QString, int> Crawler::stemmingAndIndexing(QString &text)
 {
     int index = 0;
     QRegExp reg("([А-Яа-я])+");
@@ -181,7 +180,7 @@ QString Stemming::getStemmedForm(QString &word)
 
     int index = reg.indexIn(word) + 1;
     if (index == 0)
-        return QString("");
+        return "";
 
     QString rv = word.mid(index);
     QString pre = word.left(index);
@@ -217,7 +216,7 @@ QString Stemming::getStemmedForm(QString &word)
         rv = rv.remove(rv.size() - 1, 1);
 
 
-    return  std::move(pre + rv);
+    return pre + rv;
 }
 
 
@@ -317,6 +316,7 @@ RobotsFile::RobotsFile(const QString &domen) : delay_(3)
     DownloaderHTML loader;
     reg.setPatternSyntax(QRegExp::Wildcard);
     qDebug() << "Read from: " << domen + "/robots.txt";
+    domen_ = domen;
     QString data = loader.getHTML(domen + "/robots.txt");
     QString str = "";
 
@@ -373,7 +373,17 @@ bool RobotsFile::disallow(const QString &url)
     return false;
 }
 
-int RobotsFile::delay()
+int RobotsFile::delay() const
 {
     return delay_;
+}
+
+QString RobotsFile::domen() const
+{
+    return domen_;
+}
+
+void RobotsFile::setDomen(const QString &domen)
+{
+    domen_ = domen;
 }

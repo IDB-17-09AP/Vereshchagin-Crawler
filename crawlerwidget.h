@@ -10,7 +10,6 @@
 #include <QWidget>
 #include <QProgressBar>
 #include <QMessageBox>
-#include <QThread>
 #include <QDesktopServices>
 
 #include <crawler.h>
@@ -25,7 +24,6 @@ public slots:
     void slotClicked();
 
 private:
-    QThread thread;
     QLineEdit *inputLine;
     QLabel *statusLabel;
     QPushButton *startButton;

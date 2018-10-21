@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QRegExp>
+#include <QRegularExpression>
 #include <QSet>
 #include <QThread>
 #include <QTextStream>
@@ -35,7 +36,7 @@ private:
     void recursionStart(const int depth, const QString &domen, const std::shared_ptr<RobotsFile> &file = nullptr);
     QString normalizationLink(const QString &link, const QString &domen);
     void parsingText(QString &text);
-    QMap<QString, int> stemmingText(QString &text);
+    QMap<QString, int> stemmingAndIndexing(QString &text);
 
     QSet<QString> links;
     QTextStream result;
@@ -83,12 +84,16 @@ public:
 
     bool allow(const QString &url);
     bool disallow(const QString &url);
-    int delay();
+    int delay() const;
+    QString domen() const;
+    void setDomen(const QString &domen);
+
 private:
     QRegExp reg;
     int delay_;
     QVector<QString> allow_;
     QVector<QString> disallow_;
+    QString domen_;
 };
 
 #endif // CRAWLER_H

@@ -52,3 +52,4 @@ void CrawlerWidget::slotClicked()
         statusLabel->setText("Unknow error");
     }
 }
+

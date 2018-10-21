@@ -3,14 +3,14 @@
 DownloaderHTML::DownloaderHTML(QObject *parent)
     : QObject(parent), count_(0)
 {
-    manager = new QNetworkAccessManager();    
+    manager = new QNetworkAccessManager();
     connect(manager, &QNetworkAccessManager::finished, &loop, &QEventLoop::quit);
 }
 
-QString DownloaderHTML::getHTML(const QString &url)
+QString DownloaderHTML::getHTML(const QString &url, bool redirection)
 {
     count_ = 0;
-    QNetworkReply* reply;
+    QNetworkReply *reply;
     do {
         reply = manager->get(QNetworkRequest(QUrl(url)));
         loop.exec();
@@ -23,9 +23,18 @@ QString DownloaderHTML::getHTML(const QString &url)
     if (reply->error() == QNetworkReply::NetworkSessionFailedError) {
         throw std::runtime_error(reply->errorString().toStdString());
     } else if (reply->error() == QNetworkReply::NoError){
-        QString str(reply->readAll());
-        reply->deleteLater();
-        return str;
+        QString location = reply->rawHeader("Location");
+        if (location.isEmpty()) {
+            QByteArray type = reply->rawHeader("Content-Type");
+            int index = type.indexOf("charset=");
+            QTextCodec *codec = QTextCodec::codecForName(index >= 0 ? type.mid(index + 8) : "UTF-8");
+            QString str = codec->toUnicode(reply->readAll());
+            reply->deleteLater();
+            return str;
+        }
+        if (!redirection)
+            return getHTML(location, true);
     }
+    qDebug() << "Error getting HTML:\t" << reply->errorString();
     return "";
 }

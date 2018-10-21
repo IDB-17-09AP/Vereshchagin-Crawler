@@ -7,13 +7,14 @@
 #include <QUrl>
 #include <QObject>
 #include <QEventLoop>
+#include <QTextCodec>
 
 class DownloaderHTML : public QObject
 {
     Q_OBJECT
 public:
     explicit DownloaderHTML(QObject *parent = nullptr);
-    QString getHTML(const QString &url);
+    QString getHTML(const QString &url, bool redirection = false);
 
 private:
     QNetworkAccessManager *manager;
