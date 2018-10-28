@@ -9,12 +9,18 @@
 #include <QEventLoop>
 #include <QTextCodec>
 
+struct Reply
+{
+    QString url;
+    QString data;
+};
+
 class DownloaderHTML : public QObject
 {
     Q_OBJECT
 public:
     explicit DownloaderHTML(QObject *parent = nullptr);
-    QString getHTML(const QString &url, bool redirection = false);
+    Reply getHTML(const QString &url, int redirection = 3);
 
 private:
     QNetworkAccessManager *manager;

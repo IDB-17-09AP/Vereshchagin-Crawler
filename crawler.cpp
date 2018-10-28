@@ -1,18 +1,13 @@
 #include "crawler.h"
 
 Crawler::Crawler(QObject *parent)
-    : QObject(parent), delay_(3), depth_(0)
+    : QObject(parent), depth_(0)
 {
 }
 
-Crawler::Crawler(const QString &url, QObject *parent, int depth, int delay)
-    : QObject(parent), url_(url), delay_(depth), depth_(delay)
+Crawler::Crawler(const QString &url, QObject *parent, int depth)
+    : QObject(parent), url_(url), depth_(depth)
 {
-}
-
-void Crawler::setDelay(const int delay)
-{
-    delay_ = delay;
 }
 
 void Crawler::setMaximumDepth(const int depth)
@@ -28,13 +23,12 @@ void Crawler::setUrl(const QString &url)
 QString Crawler::start()
 {
     try {
-        QFile file("result.txt");
-
+        QFile file(getDomainName() + QDateTime::currentDateTime().toString(" - hh.mm.ss - dd.MM.yyyy") + ".txt");
         if (!file.open(QFile::WriteOnly | QFile::Text))
             throw std::logic_error(file.errorString().toStdString());
 
         result.setDevice(&file);
-        recursionStart(0, url_);
+        recursionStart(0, downloader.getHTML(url_));
         emit signalProgress(100);
         file.close();
         return QFileInfo(file).absoluteDir().absolutePath();
@@ -43,55 +37,54 @@ QString Crawler::start()
     }
 }
 
-void Crawler::recursionStart(const int depth, const QString &domen,
+void Crawler::recursionStart(const int depth, Reply &&reply,
                              const std::shared_ptr<RobotsFile> &file)
 {
-    QString data(downloader.getHTML(domen));
-
-    if (data.isEmpty())
+    if (reply.url.isEmpty())
         return;
 
     if (depth < depth_) {
-        std::shared_ptr<RobotsFile> file_;
+        std::shared_ptr<RobotsFile> indexFile;
         if (file != nullptr)
-            file_ = file;
+            indexFile = file;
         else {
-            QRegExp reg(R"reg(\w{3,5}\:\/\/(\w+\.\w{2,4}))reg");
-            reg.indexIn(domen);
-            file_ = std::make_shared<RobotsFile>(domen.left(reg.matchedLength()));
+            QRegExp reg(R"reg(http(s?)://([\w]+\.){1}([\w]+\.?)+)reg");
+            reg.indexIn(reply.url);
+            indexFile = std::make_shared<RobotsFile>(reply.url.left(reg.matchedLength()));
         }
 
         int first = 0, second = 0;
         while (true) {
-            first = data.indexOf("href=", second);
+            first = reply.data.indexOf("href=", second);
             if (first == -1)
                 break;
 
             first += 6;
-            second = data.indexOf("\"", first);
+            second = reply.data.indexOf("\"", first);
 
-            QString str = (normalizationLink(data.mid(first, second - first), file_->domen()));
+            QString site = normalizationLink(reply.data.mid(first, second - first), indexFile->domain(), depth);
 
             if (depth == 0)
-                emit signalProgress(static_cast<int>((first * 100) / data.size()));
+                emit signalProgress(static_cast<int>((first * 100) / reply.data.size()));
 
-            if (!str.isEmpty()) {
-                if (file_->allow(str) || !file_->disallow(str)) {
-                    QThread::sleep(static_cast<ulong>(delay_));
-                    qDebug() << "Link: " << str;
-                    if (str.contains(file_->domen()))
-                        recursionStart(depth + 1, str, file_);
+            if (!site.isEmpty()) {
+                if (indexFile->allow(site) || !indexFile->disallow(site)) {
+                    QThread::sleep(static_cast<ulong>(indexFile->delay() + 1)); // + 1 т.к. сайт Cтанкина все равно
+                    qDebug() << "Link: " << site;                               // банит с задержкой в 2 секунды
+
+                    if (site.contains(indexFile->domain()))
+                        recursionStart(depth + 1, downloader.getHTML(site), indexFile);
                     else
-                        recursionStart(depth + 1, str);
+                        recursionStart(depth + 1, downloader.getHTML(site));
                 }
             }
         }
     }
-    parsingText(data);    
-    QMap<QString, int> resultData(stemmingAndIndexing(data));
+    parsingText(reply.data);
+    QMap<QString, int> resultData(stemmingAndIndexing(reply.data));
 
     // write
-    result << domen << " ";
+    result << reply.url << " ";
 
     for (auto it = resultData.constBegin(); it != resultData.constEnd(); ++it)
         result << it.key() << " " << it.value() << " ";
@@ -99,7 +92,7 @@ void Crawler::recursionStart(const int depth, const QString &domen,
     result << "<endLine>\n";
 }
 
-QString Crawler::normalizationLink(const QString &link, const QString& domen)
+QString Crawler::normalizationLink(const QString &link, const QString& domain, const int depth)
 {
     QString str("");
 
@@ -112,23 +105,27 @@ QString Crawler::normalizationLink(const QString &link, const QString& domen)
     str = link;
 
     if (str[0] == "/")
-        str = domen + str;     // ссылка без домена
+        str = domain + str;     // ссылка без домена
 
     if (!str.contains(QRegExp("https?")))
         return "";     // не http(s) ссылка
 
+    str.replace("www.", "");    // убираем www.
+    str.replace(QRegularExpression("(?<!:)(\\/\\/)"), "/");
+
     int index;
-    if ((index = str.indexOf(QRegExp(R"(?:\:\d{2,4})")) + 1) != 0) {
+    if ((index = str.indexOf(QRegExp("(?:\\:\\d{2,4})")) + 1) != 0) {
         QString temp = str.left(index);     // ссылка без порта
         if (links.contains(temp))           // уже есть
             return "";
     }
 
-    str.replace("www.", "");    // убираем www.
-    str.replace(QRegularExpression("(?<!:)(\\/\\/)"), "/");
-
-    if (links.contains(str))
-        return "";     // такая ссылка уже была
+    if (links.contains(str)) {
+        if (depth < depth_)
+            return str;
+        else
+            return "";     // такая ссылка уже была
+    }
 
     links.insert(str);
     return str;
@@ -174,6 +171,15 @@ QMap<QString, int> Crawler::stemmingAndIndexing(QString &text)
     return data;
 }
 
+QString Crawler::getDomainName()
+{
+    int first = url_.indexOf("//") + 2;
+    int second = url_.indexOf("/", first);
+    if (second == -1)
+        return url_.mid(first);
+    return url_.mid(first, second - 1);
+}
+
 QString Stemming::getStemmedForm(QString &word)
 {
     QRegExp reg(VOWER);
@@ -188,9 +194,10 @@ QString Stemming::getStemmedForm(QString &word)
 
     if (!(removeEndingWord(rv, PERFECTIVE_1, true) || removeEndingWord(rv, PERFECTIVE_2)))
         removeEndingWord(rv, REFLEXIVE);
-        if (!(removeEndingWord(rv, ADJECTIVE) || removeEndingWord(rv, ADJECTIVAL_1, true)
-              || removeEndingWord(rv, ADJECTIVAL_2)))
-            if (!(removeEndingWord(rv, VERB_1, true) || removeEndingWord(rv, VERB_2)))
+
+    if (!(removeEndingWord(rv, ADJECTIVE) || removeEndingWord(rv, ADJECTIVAL_1, true)
+          || removeEndingWord(rv, ADJECTIVAL_2)))
+        if (!(removeEndingWord(rv, VERB_1, true) || removeEndingWord(rv, VERB_2)))
                 removeEndingWord(rv, NOUN);
 
 
@@ -311,13 +318,13 @@ const QVector<QString> Stemming::NOUN = {"а", "ев", "ов", "ие", "ье", "
 const QVector<QString> Stemming::SUPERLATIVE = {"ейш", "ейше"};
 const QVector<QString> Stemming::DERIVATIONAL = {"ост", "ость"};
 
-RobotsFile::RobotsFile(const QString &domen) : delay_(3)
+RobotsFile::RobotsFile(const QString &domain) : delay_(3)
 {
     DownloaderHTML loader;
     reg.setPatternSyntax(QRegExp::Wildcard);
-    qDebug() << "Read from: " << domen + "/robots.txt";
-    domen_ = domen;
-    QString data = loader.getHTML(domen + "/robots.txt");
+    qDebug() << "Read from: " << domain + "/robots.txt";
+    domain_ = domain;
+    QString data = loader.getHTML(domain + "/robots.txt").data;
     QString str = "";
 
     bool find = false;
@@ -378,12 +385,12 @@ int RobotsFile::delay() const
     return delay_;
 }
 
-QString RobotsFile::domen() const
+QString RobotsFile::domain() const
 {
-    return domen_;
+    return domain_;
 }
 
-void RobotsFile::setDomen(const QString &domen)
+void RobotsFile::setdomain(const QString &domain)
 {
-    domen_ = domen;
+    domain_ = domain;
 }

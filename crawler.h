@@ -11,6 +11,7 @@
 #include <QThread>
 #include <QTextStream>
 #include <QMap>
+#include <QDateTime>
 #include <memory>
 
 #include "downloaderhtml.h"
@@ -22,9 +23,8 @@ class Crawler : public QObject
     Q_OBJECT
 public:
     Crawler(QObject *parent = nullptr);
-    Crawler(const QString& url, QObject *parent = nullptr, int depth = 2, int delay = 2);
+    Crawler(const QString& url, QObject *parent = nullptr, int depth = 2);
 
-    void setDelay(const int delay);
     void setMaximumDepth(const int depth);
     void setUrl(const QString &url);
     QString start();
@@ -33,16 +33,16 @@ signals:
     void signalProgress(int progress);
 
 private:
-    void recursionStart(const int depth, const QString &domen, const std::shared_ptr<RobotsFile> &file = nullptr);
-    QString normalizationLink(const QString &link, const QString &domen);
+    void recursionStart(const int depth, Reply &&reply, const std::shared_ptr<RobotsFile> &file = nullptr);
+    QString normalizationLink(const QString &link, const QString &domain, const int depth);
     void parsingText(QString &text);
     QMap<QString, int> stemmingAndIndexing(QString &text);
+    QString getDomainName();
 
     QSet<QString> links;
     QTextStream result;
     DownloaderHTML downloader;
     QString url_;
-    int delay_;
     int depth_;
 };
 
@@ -80,20 +80,20 @@ private:
 class RobotsFile
 {
 public:
-    RobotsFile(const QString &domen);
+    RobotsFile(const QString &domain);
 
     bool allow(const QString &url);
     bool disallow(const QString &url);
     int delay() const;
-    QString domen() const;
-    void setDomen(const QString &domen);
+    QString domain() const;
+    void setdomain(const QString &domain);
 
 private:
     QRegExp reg;
     int delay_;
     QVector<QString> allow_;
     QVector<QString> disallow_;
-    QString domen_;
+    QString domain_;
 };
 
 #endif // CRAWLER_H

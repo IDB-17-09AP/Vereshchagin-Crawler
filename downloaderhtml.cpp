@@ -6,35 +6,34 @@ DownloaderHTML::DownloaderHTML(QObject *parent)
     manager = new QNetworkAccessManager();
     connect(manager, &QNetworkAccessManager::finished, &loop, &QEventLoop::quit);
 }
-
-QString DownloaderHTML::getHTML(const QString &url, bool redirection)
+Reply DownloaderHTML::getHTML(const QString &url, int redirection)
 {
     count_ = 0;
-    QNetworkReply *reply;
+    QNetworkReply *networkReply;
     do {
-        reply = manager->get(QNetworkRequest(QUrl(url)));
+        networkReply = manager->get(QNetworkRequest(QUrl(url)));
         loop.exec();
-        if (reply->error() == QNetworkReply::TimeoutError)
+        if (networkReply->error() == QNetworkReply::TimeoutError)
             ++count_;
         else
             break;
     } while (count_ < 3);
 
-    if (reply->error() == QNetworkReply::NetworkSessionFailedError) {
-        throw std::runtime_error(reply->errorString().toStdString());
-    } else if (reply->error() == QNetworkReply::NoError){
-        QString location = reply->rawHeader("Location");
+    if (networkReply->error() == QNetworkReply::NetworkSessionFailedError) {
+        throw std::runtime_error(networkReply->errorString().toStdString());
+    } else if (networkReply->error() == QNetworkReply::NoError){
+        QString location = networkReply->rawHeader("Location");
         if (location.isEmpty()) {
-            QByteArray type = reply->rawHeader("Content-Type");
+            QByteArray type = networkReply->rawHeader("Content-Type");
             int index = type.indexOf("charset=");
             QTextCodec *codec = QTextCodec::codecForName(index >= 0 ? type.mid(index + 8) : "UTF-8");
-            QString str = codec->toUnicode(reply->readAll());
-            reply->deleteLater();
-            return str;
+            Reply reply = {url, codec->toUnicode(networkReply->readAll())};
+            networkReply->deleteLater();
+            return reply;
         }
-        if (!redirection)
-            return getHTML(location, true);
+        if (redirection > 0)
+            return getHTML(location, --redirection);
     }
-    qDebug() << "Error getting HTML:\t" << reply->errorString();
-    return "";
+    qDebug() << "Error getting HTML:\t" << networkReply->errorString();
+    return {};
 }
