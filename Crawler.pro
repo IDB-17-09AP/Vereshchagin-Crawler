@@ -28,12 +28,16 @@ SOURCES += \
         main.cpp \
     crawler.cpp \
     downloaderhtml.cpp \
-    crawlerwidget.cpp
+    crawlerwidget.cpp \
+    searcherwidget.cpp \
+    stemming.cpp
 
 HEADERS += \
     crawler.h \
     downloaderhtml.h \
-    crawlerwidget.h
+    crawlerwidget.h \
+    searcherwidget.h \
+    stemming.h
 
 # Default rules for deployment.
 qnx: target.path = /tmp/$${TARGET}/bin

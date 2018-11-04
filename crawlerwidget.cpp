@@ -28,6 +28,8 @@ CrawlerWidget::CrawlerWidget(QWidget *parent) : QWidget(parent)
     ver->addWidget(progress);
     setLayout(ver);
 
+    setMinimumSize(350, 100);
+
     // connection
     connect(startButton, &QPushButton::clicked, this, &CrawlerWidget::slotClicked);
     connect(&bot, &Crawler::signalProgress, progress, &QProgressBar::setValue);
