@@ -1,6 +1,6 @@
 #include "searcherwidget.h"
 
-SearcherWidget::SearcherWidget(QWidget *parent) : QWidget(parent)
+SearcherWidget::SearcherWidget(QWidget *parent) : QDialog(parent)
 {
     // init
     buttonSelectTxt = new QPushButton("Select txt");
@@ -26,10 +26,12 @@ SearcherWidget::SearcherWidget(QWidget *parent) : QWidget(parent)
                        "его нажатием Select txt. Теперь можно пользоваться поиском.\n"
                        "Кроме этого будет создан json файл, в котором будет\n"
                        "находится составленный индекс. В дальнейшем его можно сразу\n"
-                       "загружать минуя формирования индекса каждый раз из txt файла."));
+                       "загружать минуя формирования индекса каждый раз из txt файла.\n\n"
+                       "Двойной клик по ответу на запрос открывает его"));
 
     // layout settings
     QHBoxLayout *upLayout = new QHBoxLayout;
+    upLayout->addStretch(1);
     upLayout->addWidget(buttonSelectTxt);
     upLayout->addWidget(buttonSelectJson);
     upLayout->addWidget(tip);
@@ -46,11 +48,17 @@ SearcherWidget::SearcherWidget(QWidget *parent) : QWidget(parent)
     setLayout(layout);
 
     setMinimumSize(200, 200);
+    setWindowFlag(Qt::WindowContextHelpButtonHint, false);
 
     // connect
     connect(buttonSelectTxt, &QPushButton::clicked, this, &SearcherWidget::readFromTxt);
     connect(buttonSelectJson, &QPushButton::clicked, this, &SearcherWidget::readFromJson);
     connect(buttonSearch, &QPushButton::clicked, this, &SearcherWidget::search);
+}
+
+QListWidget *SearcherWidget::resultList()
+{
+    return searchResult;
 }
 
 void SearcherWidget::writeToJson(const Index &index) const
@@ -100,35 +108,35 @@ void SearcherWidget::readFromJson()
 void SearcherWidget::search()
 {
     QString str = inputRequest->text(), word;
-    QVector<QString> request;
+    QVector<QMap<QString, double>* > request;
     QTextStream out(&str);
     while (!out.atEnd()) {
         out >> word;
-        word = Stemming::getStemmedForm(word);
+        word = Stemming::getStemmedForm(word.toLower());
         if (!word.isEmpty())
-            request.append(word);
+            request.append(&index[word]);
     }
     if (!request.isEmpty()) {
-        QMap<QString, double> result;
-        auto &collectionFirst = index[request[0]];
-        for (int i = 1; i < request.size(); ++i) {
-            auto &collectionSecond = index[request[i]];
-            for (auto it = collectionSecond.cbegin(); it != collectionSecond.cend(); ++it) {
-                if (i == 1) {
-                    if (collectionFirst.contains(it.key()))
-                        result.insert(it.key(), it.value());
-                } else {
-                    if (result.contains(it.key()))
-                        result.insert(it.key(), it.value());
-                }
+        QMap<QString, double> preResult;
+
+        QMap<QString, double>::iterator temp;
+        for (auto el : request) {
+            if (!el->isEmpty()) {
+                for (auto it = el->cbegin(); it != el->cend(); ++it)
+                    if ((temp = preResult.find(it.key())) != preResult.end())
+                        temp.value() *= it.value();
+                    else
+                        preResult.insert(it.key(), it.value());
             }
         }
-        if (result.isEmpty())
-            result = collectionFirst;
+
+        std::map<double, QString> result;
+        for (auto it = preResult.cbegin(); it != preResult.cend(); ++it)
+            result.emplace(it.value(), it.key());
+
         searchResult->clear();
-        for (auto it = result.cbegin(); it != result.cend(); ++it) {
-            searchResult->addItem(it.key());
-        }
+        for (auto it = result.crbegin(); it != result.crend(); ++it)
+            searchResult->addItem(it->second);
     }
 }
 

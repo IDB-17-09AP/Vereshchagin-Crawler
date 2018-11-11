@@ -20,12 +20,20 @@ class DownloaderHTML : public QObject
     Q_OBJECT
 public:
     explicit DownloaderHTML(QObject *parent = nullptr);
-    Reply getHTML(const QString &url, int redirection = 3);
+    Reply getHTML(const QString &url);
+
+    QString contentType() const;
+    void setContentType(const QString &value);
+
+signals:
+    void errorMessage(const QString &str);
 
 private:
     QNetworkAccessManager *manager;
+    QNetworkRequest request;
     QEventLoop loop;
-    int count_;
+    QString contentType_;
+    int count;
 };
 
 #endif // DOWNLOADERHTML_H

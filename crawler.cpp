@@ -1,49 +1,101 @@
 #include "crawler.h"
 
-Crawler::Crawler(QObject *parent)
-    : QObject(parent), depth_(0)
+Crawler::Crawler(QWidget *parent)
+    : QDialog(parent)
 {
+    // init
+    inputUrl = new QLineEdit("http://stankin.ru");
+    inputDepth = new QSpinBox;
+    buttonStart = new QPushButton("Start");
+    progress = new QProgressBar;
+    labelStatus = new QLabel("Ready for work");
+    console = new QPlainTextEdit;
+
+    // settings
+    inputDepth->setValue(0);
+    inputDepth->setRange(0, 100);
+
+    progress->setRange(0, 100);
+    progress->setAlignment(Qt::AlignCenter);
+
+    console->setReadOnly(true);
+    console->setMinimumSize(350, 200);
+
+    downloader.setContentType("text/html");
+
+    setMinimumSize(350, 300);
+    setWindowFlag(Qt::WindowContextHelpButtonHint, false);
+
+    // layout setup
+    QHBoxLayout* horLayout = new QHBoxLayout;
+    horLayout->addWidget(new QLabel(tr("Link:")));
+    horLayout->addWidget(inputUrl);
+    horLayout->addWidget(new QLabel(tr("Depth:")));
+    horLayout->addWidget(inputDepth);
+    horLayout->addWidget(buttonStart);
+
+    QVBoxLayout* verLayout = new QVBoxLayout;
+    verLayout->addLayout(horLayout);
+    verLayout->addWidget(labelStatus);
+    verLayout->addWidget(progress);
+    verLayout->addWidget(console);
+
+    setLayout(verLayout);
+
+    // connection
+    connect(buttonStart, &QPushButton::clicked, this, &Crawler::start);
+    connect(&downloader, &DownloaderHTML::errorMessage, this, &Crawler::writeToConsole);
+    connect(&sleepTimer, &QTimer::timeout, &sleepLoop, &QEventLoop::quit);
 }
 
-Crawler::Crawler(const QString &url, QObject *parent, int depth)
-    : QObject(parent), url_(url), depth_(depth)
-{
-}
-
-void Crawler::setMaximumDepth(const int depth)
-{
-    depth_ = depth;
-}
-
-void Crawler::setUrl(const QString &url)
-{
-    url_ = url;
-}
-
-QString Crawler::start()
+void Crawler::start()
 {
     try {
-        QFile file(getDomainName() + QDateTime::currentDateTime().toString(" - hh.mm.ss - dd.MM.yyyy") + ".txt");
+        buttonStart->setEnabled(false);
+        inputDepth->setEnabled(false);
+        inputUrl->setEnabled(false);
+        labelStatus->setText(tr("Please wait..."));
+        QFile file(getDomainName()
+                   + QDateTime::currentDateTime().toString(" - hh.mm.ss - dd.MM.yyyy")
+                   + ".txt");
         if (!file.open(QFile::WriteOnly | QFile::Text))
             throw std::logic_error(file.errorString().toStdString());
 
         result.setDevice(&file);
-        recursionStart(0, downloader.getHTML(url_));
-        emit signalProgress(100);
+        links.insert(inputUrl->text());
+        recursionStart(0, downloader.getHTML(inputUrl->text()));
         file.close();
-        return QFileInfo(file).absoluteDir().absolutePath();
+
+        progress->setValue(100);
+        labelStatus->setText(tr("All ready"));
+
+    } catch (std::exception &ex) {
+        QMessageBox::critical(this, "Error", QString::fromLocal8Bit(ex.what()));
+        labelStatus->setText("Error: " + QString::fromLocal8Bit(ex.what()));
     } catch (...) {
-        throw;
+        QMessageBox::critical(this, "Error", "Unknow error");
+        labelStatus->setText(tr("Unknow error"));
     }
+    buttonStart->setEnabled(true);
+    inputDepth->setEnabled(true);
+    inputUrl->setEnabled(true);
+}
+
+void Crawler::writeToConsole(const QString &str)
+{
+    console->appendPlainText(QTime::currentTime().toString("[hh.mm.ss] ") + str);
+    console->verticalScrollBar()->setValue(console->verticalScrollBar()->maximum());
 }
 
 void Crawler::recursionStart(const int depth, Reply &&reply,
                              const std::shared_ptr<RobotsFile> &file)
 {
-    if (reply.url.isEmpty())
+    if (reply.data.isEmpty())
         return;
 
-    if (depth < depth_) {
+    writeToConsole("load link: " + reply.url);
+
+    if (depth < inputDepth->value()) {
         std::shared_ptr<RobotsFile> indexFile;
         if (file != nullptr)
             indexFile = file;
@@ -51,6 +103,7 @@ void Crawler::recursionStart(const int depth, Reply &&reply,
             QRegExp reg(R"reg(http(s?)://([\w]+\.){1}([\w]+\.?)+)reg");
             reg.indexIn(reply.url);
             indexFile = std::make_shared<RobotsFile>(reply.url.left(reg.matchedLength()));
+            writeToConsole("read from: " + indexFile->domain() + "/robots.txt");
         }
 
         int first = 0, second = 0;
@@ -65,14 +118,15 @@ void Crawler::recursionStart(const int depth, Reply &&reply,
             QString site = normalizationLink(reply.data.mid(first, second - first), indexFile->domain(), depth);
 
             if (depth == 0)
-                emit signalProgress(static_cast<int>((first * 100) / reply.data.size()));
+                progress->setValue(static_cast<int>((first * 100) / reply.data.size()));
 
             if (!site.isEmpty()) {
                 if (indexFile->allow(site) || !indexFile->disallow(site)) {
-                    QThread::sleep(static_cast<ulong>(indexFile->delay() + 1)); // + 1 т.к. сайт Cтанкина все равно
-                    qDebug() << "Link: " << site;                               // банит с задержкой в 2 секунды
 
-                    if (site.contains(indexFile->domain()))
+                    sleepTimer.start((indexFile->delay() + 1) * 1000);      // + 1 т.к. сайт Cтанкина все равно
+                    sleepLoop.exec();                                       // банит с задержкой в 2 секунды
+
+                    if (site.startsWith(indexFile->domain()))
                         recursionStart(depth + 1, downloader.getHTML(site), indexFile);
                     else
                         recursionStart(depth + 1, downloader.getHTML(site));
@@ -94,17 +148,15 @@ void Crawler::recursionStart(const int depth, Reply &&reply,
 
 QString Crawler::normalizationLink(const QString &link, const QString& domain, const int depth)
 {
-    QString str("");
-
     if (link.isEmpty())
-        return str;     // пустая ссылка
+        return "";     // пустая ссылка
 
     if (link.contains(QRegExp(".css|.pdf|.png|.docx")))
-        return str;     // ссылка на файл
+        return "";     // ссылка на файл
 
-    str = link;
+    QString str = link;
 
-    if (str[0] == "/")
+    if (str.startsWith("/"))
         str = domain + str;     // ссылка без домена
 
     if (!str.contains(QRegExp("https?")))
@@ -113,15 +165,15 @@ QString Crawler::normalizationLink(const QString &link, const QString& domain, c
     str.replace("www.", "");    // убираем www.
     str.replace(QRegularExpression("(?<!:)(\\/\\/)"), "/");
 
-    int index;
-    if ((index = str.indexOf(QRegExp("(?:\\:\\d{2,4})")) + 1) != 0) {
+    int index = 0;
+    if ((index = str.indexOf(QRegExp(R"(\:\d{2,4})"))) != 0) {
         QString temp = str.left(index);     // ссылка без порта
         if (links.contains(temp))           // уже есть
             return "";
     }
 
     if (links.contains(str)) {
-        if (depth < depth_)
+        if (depth < inputDepth->value())
             return str;
         else
             return "";     // такая ссылка уже была
@@ -146,7 +198,7 @@ void Crawler::parsingText(QString &text)
     text.replace(reg, " "); // вырезаем спец. символы
 }
 
-DataOfPage Crawler::stemmingAndIndexing(QString &text)
+DataOfPage Crawler::stemmingAndIndexing(const QString &text)
 {
     int index = 0;
     QRegExp reg("([А-Яа-я])+");
@@ -175,18 +227,20 @@ DataOfPage Crawler::stemmingAndIndexing(QString &text)
 
 QString Crawler::getDomainName()
 {
-    int first = url_.indexOf("//") + 2;
-    int second = url_.indexOf("/", first);
+    QString url = inputUrl->text();
+    int first = url.indexOf("//") + 2;
+    int second = url.indexOf("/", first);
     if (second == -1)
-        return url_.mid(first);
-    return url_.mid(first, second - 1);
+        return url.mid(first);
+    return url.mid(first, second - 1);
 }
 
 RobotsFile::RobotsFile(const QString &domain) : delay_(3)
 {
     DownloaderHTML loader;
+    loader.setContentType("text/plain");
     reg.setPatternSyntax(QRegExp::Wildcard);
-    qDebug() << "Read from: " << domain + "/robots.txt";
+
     domain_ = domain;
     QString data = loader.getHTML(domain + "/robots.txt").data;
     QString str = "";
@@ -207,7 +261,6 @@ RobotsFile::RobotsFile(const QString &domain) : delay_(3)
             if (str == "*")
                 find = true;
         }
-
         if (find) {
             if (str == "allow:") {
                 input >> str;
@@ -259,3 +312,4 @@ void RobotsFile::setdomain(const QString &domain)
 {
     domain_ = domain;
 }
+

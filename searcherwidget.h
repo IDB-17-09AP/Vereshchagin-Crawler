@@ -1,36 +1,18 @@
 #ifndef SEARCHERWIDGET_H
 #define SEARCHERWIDGET_H
 
-#include <QWidget>
-#include <QtCore/qmath.h>
-#include <QHBoxLayout>
-#include <QVBoxLayout>
-#include <QFormLayout>
-#include <QPushButton>
-#include <QLineEdit>
-#include <QLabel>
-#include <QListWidget>
-#include <QString>
-#include <QFileDialog>
-#include <QFile>
-#include <QPair>
-#include <QMap>
-#include <QTextStream>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QTextStream>
-#include <QDebug>
+#include <QtWidgets>
 
 #include "stemming.h"
 
 using Index = QMap<QString, QMap<QString, double>>;
 
-class SearcherWidget : public QWidget
+class SearcherWidget : public QDialog
 {
     Q_OBJECT
 public:
-    explicit SearcherWidget(QWidget *parent = nullptr);
+    SearcherWidget(QWidget *parent = nullptr);
+    QListWidget *resultList();
 
 public slots:
     void writeToJson(const Index &index) const;

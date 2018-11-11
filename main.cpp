@@ -1,24 +1,15 @@
 #include <QApplication>
-#include <QWidget>
-#include <QVBoxLayout>
+#include <QScreen>
 
-#include "crawlerwidget.h"
-#include "searcherwidget.h"
+#include "browser.h"
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
 
-    QWidget wgt;
-    CrawlerWidget *crawler = new CrawlerWidget;
-    SearcherWidget *searcher = new SearcherWidget;
-
-    QVBoxLayout *layout = new QVBoxLayout;
-    layout->addWidget(crawler);
-    layout->addWidget(searcher);
-    wgt.setLayout(layout);
-
-    wgt.show();
+    Browser browser;
+    browser.resize(QGuiApplication::primaryScreen()->size() * 0.7);
+    browser.show();
 
     return a.exec();
 }
