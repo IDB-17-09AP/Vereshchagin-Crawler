@@ -1,0 +1,10 @@
+<RCC>
+    <qresource prefix="/">
+        <file alias="refresh.png">res/refresh.png</file>
+        <file alias="stop.png">res/stop.png</file>
+        <file alias="back.png">res/back.png</file>
+        <file alias="forward.png">res/forward.png</file>
+        <file alias="home.png">res/home.png</file>
+        <file alias="search.png">res/search.png</file>
+    </qresource>
+</RCC>

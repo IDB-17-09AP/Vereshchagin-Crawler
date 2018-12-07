@@ -20,7 +20,10 @@ Reply DownloaderHTML::getHTML(const QString &url)
     auto networkReplyHead = manager->head(request);
     loop.exec();
 
-    if (networkReplyHead->header(QNetworkRequest::ContentTypeHeader).toString().startsWith(contentType_)) {
+//    qDebug() << networkReplyHead->header(QNetworkRequest::ContentTypeHeader).toString();
+
+    if (networkReplyHead->header(QNetworkRequest::ContentTypeHeader).toString().startsWith(contentType_) ||
+            networkReplyHead->header(QNetworkRequest::ContentTypeHeader).toString().isEmpty()) {
         QNetworkReply *networkReply;
         request.setUrl(networkReplyHead->url());
         count = 0;

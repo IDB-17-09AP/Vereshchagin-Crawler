@@ -6,19 +6,34 @@ Browser::Browser(QWidget *parent) : QMainWindow (parent)
     // init
     lineUrl = new QLineEdit("http://stankin.ru");
     webView = new QWebEngineView;
-    buttonBack = new QPushButton("<");
-    buttonForward = new QPushButton(">");
-    buttonRefreshAndStop = new QPushButton(tr("Refresh"));
+    buttonBack = new QPushButton;
+    buttonForward = new QPushButton;
+    buttonRefreshAndStop = new QPushButton;
     searcher = new SearcherWidget(this);
     refresh = true;
 
     QProgressBar *progressLoad = new QProgressBar;
-    QPushButton *buttonGo = new QPushButton(tr("Go"));
-    QPushButton *buttonHome = new QPushButton(tr("Home"));
+    QPushButton *buttonGo = new QPushButton();
+    QPushButton *buttonHome = new QPushButton();
+
+    setWindowIcon(qApp->style()->standardIcon(QStyle::SP_MediaPlay));
 
     // settings
-    buttonBack->setEnabled(false);
+    buttonRefreshAndStop->setIcon(QIcon(QStringLiteral(":/refresh.png")));
+    buttonRefreshAndStop->setIconSize(QSize(20, 20));
     buttonForward->setEnabled(false);
+    buttonForward->setIcon(QIcon(QStringLiteral(":/forward.png")));
+    buttonForward->setIconSize(QSize(20, 20));
+    buttonBack->setEnabled(false);
+    buttonBack->setIcon(QIcon(QStringLiteral(":/back.png")));
+    buttonBack->setIconSize(QSize(20, 20));
+    buttonHome->setIcon(QIcon(QStringLiteral(":/home.png")));
+    buttonHome->setIconSize(QSize(20, 20));
+    buttonGo->setIcon(QIcon(QStringLiteral(":/search.png")));
+    buttonGo->setIconSize(QSize(20, 20));
+
+    lineUrl->setFixedHeight(26);
+    lineUrl->setFont(QFont("Segoe UI", 12));
 
     searcher->resize(480, 320);
 
@@ -42,8 +57,11 @@ Browser::Browser(QWidget *parent) : QMainWindow (parent)
     menuBar()->addMenu(menuSearcher);
 
     QMenu *menuHelp = new QMenu(tr("&Help"));
-//    menuHelp->addAction(tr("&Settings"));
-//    menuHelp->addSeparator();
+//    menuHelp->addAction(tr("&Settings"), [this](){
+//        Settings settingsWindow(this);
+//        settingsWindow.exec();
+//    });
+    menuHelp->addSeparator();
     menuHelp->addAction(tr("&About"), [this](){
         QMessageBox::about(this, tr("About"), tr("Create by:\n"
                                                  "Nikolay Vereshchagin\n"
@@ -107,7 +125,7 @@ void Browser::slotGoForSearcher(QListWidgetItem *item)
 
 void Browser::slotSetStopButton()
 {
-    buttonRefreshAndStop->setText(tr("Stop"));
+    buttonRefreshAndStop->setIcon(QIcon(QStringLiteral(":/stop.png")));
     refresh = false;
 }
 
@@ -123,11 +141,13 @@ void Browser::slotButtonRefreshAndStop()
 void Browser::slotFinished(bool status)
 {
     if (!status) {
-    webView->setHtml("<CENТER>An error has occured"
-                     " while loading the web page</CENТER>");
+        webView->setHtml("<center>An error has occured"
+                         " while loading the web page</center>");
+    } else {
+       lineUrl->setText(webView->url().toString());
     }
-    lineUrl->setText(webView->url().toString());
-    buttonRefreshAndStop->setText(tr("Refresh"));
+    buttonRefreshAndStop->setIcon(QIcon(QStringLiteral(":/refresh.png")));
+    refresh = true;
     buttonBack->setEnabled(webView->history()->canGoBack());
     buttonForward->setEnabled(webView->history()->canGoForward());
 }

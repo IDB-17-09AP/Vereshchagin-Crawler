@@ -21,7 +21,9 @@ public slots:
     void search();
 
 private:
-    void computeRelevance(QMap<QString, double> &data, int numberDocuments);
+    void computeRelevance(int numberDocuments/*,
+                          const QMap<QString, QPair<int, int> > &avgdl,
+                          QMap<QString, int> numberWordInDocs*/);
 
     QPushButton *buttonSelectTxt;
     QPushButton *buttonSelectJson;

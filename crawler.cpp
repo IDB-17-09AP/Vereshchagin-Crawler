@@ -196,6 +196,9 @@ void Crawler::parsingText(QString &text)
 
     reg.setPattern("&\\w{0,7};");
     text.replace(reg, " "); // вырезаем спец. символы
+
+    reg.setPattern(R"reg([\.\,\;\:\(\)])reg");
+    text.replace(reg, " "); // вырезаем остальные символы
 }
 
 DataOfPage Crawler::stemmingAndIndexing(const QString &text)

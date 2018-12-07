@@ -54,6 +54,7 @@ SearcherWidget::SearcherWidget(QWidget *parent) : QDialog(parent)
     connect(buttonSelectTxt, &QPushButton::clicked, this, &SearcherWidget::readFromTxt);
     connect(buttonSelectJson, &QPushButton::clicked, this, &SearcherWidget::readFromJson);
     connect(buttonSearch, &QPushButton::clicked, this, &SearcherWidget::search);
+    connect(inputRequest, &QLineEdit::returnPressed, this, &SearcherWidget::search);
 }
 
 QListWidget *SearcherWidget::resultList()
@@ -124,7 +125,7 @@ void SearcherWidget::search()
             if (!el->isEmpty()) {
                 for (auto it = el->cbegin(); it != el->cend(); ++it)
                     if ((temp = preResult.find(it.key())) != preResult.end())
-                        temp.value() *= it.value();
+                        temp.value() += it.value();
                     else
                         preResult.insert(it.key(), it.value());
             }
@@ -140,48 +141,73 @@ void SearcherWidget::search()
     }
 }
 
-void SearcherWidget::computeRelevance(QMap<QString, double> &data, int numberDocuments)
+void SearcherWidget::computeRelevance(int numberDocuments/*,
+                                      const QMap<QString, QPair<int, int>> &avgdl,
+                                      QMap<QString, int> numberWordInDocs*/)
 {
-    for (auto& value : data) {
-        value *= qLn(static_cast<double>(numberDocuments) / data.size());
-        // TF-IDF
+    /*
+    for (auto word = index.begin(); word != index.end(); ++word) {
+        for (auto domain = word.value().begin(); domain != word.value().end(); ++domain) {
+            domain.value() *= (domain.value() + 3) /    // TF + поправка k
+                    (domain.value() + 2 *               // TF + поправка b
+                    (0.25 + 0.75 * numberWordInDocs[domain.key()]               //  длина документа деленное на
+                    / (avgdl[word.key()].first / avgdl[word.key()].second)));   // среднию длину документа коллекции
+            // расчёт IDF
+            double IDF = qLn((numberDocuments - word.value().size() + 0.5) / (word.value().size() + 0.5));
+            domain.value() *= IDF > 0 ? IDF : 0.00001;
+        }
+    }
+    */
+    for (auto &word : index) {
+        for (auto& value : word) {
+                value *= qLn(static_cast<double>(numberDocuments * 100) / word.size());
+                // TF-IDF
+        }
     }
 }
 
 void SearcherWidget::readFromTxt()
 {
-    QString path = QFileDialog::getOpenFileName(this, "Select file", "",
+    auto paths = QFileDialog::getOpenFileNames(this, "Select file", "",
                                                 "Text file (*.txt) ;; All files (*.*)");
-    QFile file(path);
+    int numberDocuments = 0;
+    // avgdl - средняя длина документа в коллекции
+//    QMap<QString, QPair<int, int>> avgdl;
+//    QMap<QString, int> numberWordInDocs;
+    for (const auto &path : paths) {
+        QFile file(path);
 
-    if (file.open(QIODevice::ReadOnly)) {
-        QTextStream fin(&file);
-        QString domain, word = "nothing";
-        int numberWord, numberWordInDoc, numberDocuments = 0;
+        if (file.open(QIODevice::ReadOnly)) {
+            QTextStream fin(&file);
+            QString domain, word = "nothing";
+            int numberWord, numberWordInDoc;
 
-        while (!fin.atEnd()) {
-            fin >> domain;
-            fin >> numberWordInDoc;
-            ++numberDocuments;
-            while (!word.isEmpty()) {
-                fin >> word;
-                if (word == "<endLine>")
-                    break;
+            while (!fin.atEnd()) {
+                fin >> domain;
+                fin >> numberWordInDoc;
+                ++numberDocuments;
 
-                fin >> numberWord;
-                if (numberWordInDoc) {  // вычисление TF
-                    index[word][domain] = 1 + static_cast<double>(numberWord) / numberWordInDoc;
+//                numberWordInDocs[domain] = numberWordInDoc;
+
+                while (!word.isEmpty()) {
+                    fin >> word;
+                    if (word == "<endLine>")
+                        break;
+
+                    fin >> numberWord;
+                    if (numberWordInDoc) {  // вычисление TF
+                        index[word][domain] = 1 + static_cast<double>(numberWord) / numberWordInDoc;
+//                        avgdl[word].first += numberWordInDoc;
+//                        ++avgdl[word].second;
+                    }
                 }
             }
+        } else {
+            QMessageBox::critical(this, tr("Error!"), tr("Error open file!"));
         }
-
-        for (auto &word : index)
-            computeRelevance(word, numberDocuments * 100);
-
-        writeToJson(index);
-        buttonSearch->setEnabled(true);
-    } else {
-        qDebug() << "error open file!";
     }
+    computeRelevance(numberDocuments/*, avgdl, numberWordInDocs*/);
 
+    writeToJson(index);
+    buttonSearch->setEnabled(true);
 }

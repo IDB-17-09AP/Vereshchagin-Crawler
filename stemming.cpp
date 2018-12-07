@@ -173,4 +173,377 @@ const QVector<QString> Stemming::NOUN = {"а", "ев", "ов", "ие", "ье", "
                              "иях", "ях", "ы", "ь", "ию", "ью", "ю", "ия", "ья", "я"};
 const QVector<QString> Stemming::SUPERLATIVE = {"ейш", "ейше"};
 const QVector<QString> Stemming::DERIVATIONAL = {"ост", "ость"};
+//----------------------------------------------------------------------------------------------------------------------
 
+QString StemmingEng::getStemmedForm(QString &word)
+{
+    if (word.size() <= 2)
+        return word;
+
+    if (special(word))
+        return word;
+
+    changeY(word);
+
+    int startR1 = getStartR1(word);
+    int startR2 = getStartR2(word, startR1);
+
+    step0(word)
+            ;
+    if (step1A(word)) {
+        std::replace(word.begin(), word.end(), 'Y', 'y');
+        return word;
+    }
+
+    step1B(word, startR1);
+    step1C(word);
+    step2(word, startR1);
+    step3(word, startR1, startR2);
+    step4(word, startR2);
+    step5(word, startR1, startR2);
+
+    std::replace(word.begin(), word.end(), 'Y', 'y');
+    return word;
+}
+
+bool StemmingEng::special(QString &word)
+{
+    static const QMap<QString, QString> exceptions = {{"skis", "ski"},
+                                                      {"skies", "sky"},
+                                                      {"dying", "die"},
+                                                      {"lying", "lie"},
+                                                      {"tying", "tie"},
+                                                      {"idly", "idl"},
+                                                      {"gently", "gentl"},
+                                                      {"ugly", "ugli"},
+                                                      {"early", "earli"},
+                                                      {"only", "onli"},
+                                                      {"singly", "singl"}};
+
+    // special cases
+    auto ex = exceptions.find(word);
+    if (ex != exceptions.end())
+    {
+        word = ex.value();
+        return true;
+    }
+
+    // invariants
+    return word.size() >= 3 && word.size() <= 5
+           && (word == "sky" || word == "news" || word == "howe"
+               || word == "atlas" || word == "cosmos" || word == "bias"
+               || word == "andes");
+}
+
+void StemmingEng::changeY(QString &word)
+{
+    if (word[0] == 'y')
+        word[0] = 'Y';
+
+    for (int i = 1; i < word.size(); ++i)
+    {
+        if (word[i] == 'y' && isVowel(word[i - 1]))
+            word[i++] = 'Y'; // skip next iteration
+    }
+}
+
+bool StemmingEng::isVowel(QChar ch)
+{
+    return ch == 'e' || ch == 'a' || ch == 'i' || ch == 'o' || ch == 'u';
+}
+
+bool StemmingEng::isVowelY(QChar ch)
+{
+    return ch == 'e' || ch == 'a' || ch == 'i' || ch == 'o' || ch == 'u'
+           || ch == 'y';
+}
+
+int StemmingEng::firstNonVowelAfterVowel(QString &word, int start)
+{
+    for (int i = start; i != 0 && i < word.size(); ++i)
+    {
+        if (!isVowelY(word[i]) && isVowelY(word[i - 1]))
+            return i + 1;
+    }
+
+    return word.size();
+}
+
+int StemmingEng::getStartR1(QString &word)
+{
+    // special cases
+    if (word.size() >= 5 && word[0] == 'g' && word[1] == 'e' && word[2] == 'n'
+        && word[3] == 'e' && word[4] == 'r')
+        return 5;
+    if (word.size() >= 6 && word[0] == 'c' && word[1] == 'o' && word[2] == 'm'
+        && word[3] == 'm' && word[4] == 'u' && word[5] == 'n')
+        return 6;
+    if (word.size() >= 5 && word[0] == 'a' && word[1] == 'r' && word[2] == 's'
+        && word[3] == 'e' && word[4] == 'n')
+        return 5;
+
+    // general case
+    return firstNonVowelAfterVowel(word, 1);
+}
+
+int StemmingEng::getStartR2(QString &word, int startR1)
+{
+    if (startR1 == word.size())
+        return startR1;
+
+    return firstNonVowelAfterVowel(word, startR1 + 1);
+}
+
+bool StemmingEng::replaceIfExists(QString &word, QString suffix, QString replacement, int start)
+{
+    if (suffix.size() > word.size())
+        return false;
+
+    int idx = word.size() - suffix.size();
+    if (idx < start)
+        return false;
+
+    auto diff = static_cast<std::string::iterator::difference_type>(idx);
+    if (std::equal(word.begin() + diff, word.end(), suffix.begin()))
+    {
+        word.replace(idx, suffix.size(), replacement);
+        return true;
+    }
+    return false;
+}
+
+bool StemmingEng::containsVowel(QString &word, int start, int end)
+{
+    if (end <= word.size())
+    {
+        for (int i = start; i < end; ++i)
+            if (isVowelY(word[i]))
+                return true;
+    }
+    return false;
+}
+
+bool StemmingEng::endsInDouble(const QString &word)
+{
+    if (word.size() >= 2)
+    {
+        auto a = word[word.size() - 1];
+        auto b = word[word.size() - 2];
+
+        if (a == b)
+            return a == 'b' || a == 'd' || a == 'f' || a == 'g' || a == 'm'
+                   || a == 'n' || a == 'p' || a == 'r' || a == 't';
+    }
+    return false;
+}
+
+bool StemmingEng::isShort(const QString &word)
+{
+    int size = word.size();
+
+    if (size >= 3)
+    {
+        if (!isVowelY(word[size - 3]) && isVowelY(word[size - 2])
+            && !isVowelY(word[size - 1]) && word[size - 1] != 'w'
+            && word[size - 1] != 'x' && word[size - 1] != 'Y')
+            return true;
+    }
+    return size == 2 && isVowelY(word[0]) && !isVowelY(word[1]);
+}
+
+bool StemmingEng::isValidLIEnding(QChar ch)
+{
+    return ch == 'c' || ch == 'd' || ch == 'e' || ch == 'g' || ch == 'h'
+           || ch == 'k' || ch == 'm' || ch == 'n' || ch == 'r' || ch == 't';
+}
+
+void StemmingEng::step0(QString &word)
+{
+    // short circuit the longest suffix
+    replaceIfExists(word, "'s'", "", 0) ||
+            replaceIfExists(word, "'s", "", 0) ||
+            replaceIfExists(word, "'", "", 0);
+}
+
+bool StemmingEng::step1A(QString &word)
+{
+    if (!replaceIfExists(word, "sses", "ss", 0))
+    {
+        if (word.endsWith("ied") || word.endsWith("ies"))
+        {
+            // if preceded by only one letter
+            if (word.size() <= 4)
+                word.chop(1);
+            else
+            {
+                word.chop(2);
+            }
+        }
+        else if (word.endsWith("s") && !word.endsWith("us")
+                 && !word.endsWith("ss"))
+        {
+            if (word.size() > 2 && containsVowel(word, 0, word.size() - 2))
+                word.chop(1);
+        }
+    }
+
+    // special case after step 1a
+    return (word.size() == 6 || word.size() == 7)
+           && (word == "inning" || word == "outing" || word == "canning"
+               || word == "herring" || word == "earring" || word == "proceed"
+               || word == "exceed" || word == "succeed");
+}
+
+void StemmingEng::step1B(QString &word, int startR1)
+{
+    bool exists = word.endsWith("eedly") || word.endsWith("eed");
+
+    if (exists) // look only in startR1 now
+        replaceIfExists(word, "eedly", "ee", startR1)
+            || replaceIfExists(word, "eed", "ee", startR1);
+    else
+    {
+        int size = word.size();
+        bool deleted = (containsVowel(word, 0, size - 2)
+                        && replaceIfExists(word, "ed", "", 0))
+                       || (containsVowel(word, 0, size - 4)
+                           && replaceIfExists(word, "edly", "", 0))
+                       || (containsVowel(word, 0, size - 3)
+                           && replaceIfExists(word, "ing", "", 0))
+                       || (containsVowel(word, 0, size - 5)
+                           && replaceIfExists(word, "ingly", "", 0));
+
+        if (deleted && (word.endsWith("at") ||
+                        word.endsWith("bl") ||
+                        word.endsWith("iz")))
+            word.append('e');
+        else if (deleted && endsInDouble(word))
+            word.chop(1);
+        else if (deleted && startR1 == word.size() && isShort(word))
+            word.push_back('e');
+    }
+}
+
+void StemmingEng::step1C(QString &word)
+{
+    int size = word.size();
+    if (size > 2 && (word[size - 1] == 'y' || word[size - 1] == 'Y'))
+        if (!isVowel(word[size - 2]))
+            word[size - 1] = 'i';
+}
+
+void StemmingEng::step2(QString &word, int startR1)
+{
+    static const std::pair<QString, QString>
+            subs[] = {{"ational", "ate"},
+                      {"tional", "tion"},
+                      {"enci", "ence"},
+                      {"anci", "ance"},
+                      {"abli", "able"},
+                      {"entli", "ent"},
+                      {"izer", "ize"},
+                      {"ization", "ize"},
+                      {"ation", "ate"},
+                      {"ator", "ate"},
+                      {"alism", "al"},
+                      {"aliti", "al"},
+                      {"alli", "al"},
+                      {"fulness", "ful"},
+                      {"ousli", "ous"},
+                      {"ousness", "ous"},
+                      {"iveness", "ive"},
+                      {"iviti", "ive"},
+                      {"biliti", "ble"},
+                      {"bli", "ble"},
+                      {"fulli", "ful"},
+                      {"lessli", "less"}};
+
+    for (auto& sub : subs)
+        if (replaceIfExists(word, sub.first, sub.second, startR1))
+            return;
+
+    if (!replaceIfExists(word, "logi", "log", startR1 - 1))
+    {
+        // make sure we choose the longest suffix
+        if (word.endsWith("li") && !word.endsWith("abli")
+            && !word.endsWith("entli") && !word.endsWith("aliti")
+            && !word.endsWith("alli") && !word.endsWith("ousli")
+            && !word.endsWith("bli") && !word.endsWith("fulli")
+            && !word.endsWith("lessli"))
+            if (word.size() > 3 && word.size() - 2 >= startR1
+                && isValidLIEnding(word[word.size() - 3]))
+            {
+                word.chop(2);
+            }
+    }
+}
+
+void StemmingEng::step3(QString &word, int startR1, int startR2)
+{
+    static const std::pair<QString, QString>
+        subs[] = {{"ational", "ate"},
+                  {"tional", "tion"},
+                  {"alize", "al"},
+                  {"icate", "ic"},
+                  {"iciti", "ic"},
+                  {"ical", "ic"},
+                  {"ful", ""},
+                  {"ness", ""}};
+
+    for (auto& sub : subs)
+        if (replaceIfExists(word, sub.first, sub.second, startR1))
+            return;
+
+    replaceIfExists(word, "ative", "", startR2);
+}
+
+void StemmingEng::step4(QString &word, int startR2)
+{
+    static const std::pair<QString, QString>
+        subs[] = {{"al", ""},
+                  {"ance", ""},
+                  {"ence", ""},
+                  {"er", ""},
+                  {"ic", ""},
+                  {"able", ""},
+                  {"ible", ""},
+                  {"ant", ""},
+                  {"ement", ""},
+                  {"ment", ""},
+                  {"ism", ""},
+                  {"ate", ""},
+                  {"iti", ""},
+                  {"ous", ""},
+                  {"ive", ""},
+                  {"ize", ""}};
+
+    for (auto& sub : subs)
+        if (replaceIfExists(word, sub.first, sub.second, startR2))
+            return;
+
+    // make sure we only choose the longest suffix
+    if (!word.endsWith("ement") && !word.endsWith("ment"))
+        if (replaceIfExists(word, "ent", "", startR2))
+            return;
+
+    // short circuit
+    replaceIfExists(word, "sion", "s", startR2 - 1)
+            || replaceIfExists(word, "tion", "t", startR2 - 1);
+}
+
+void StemmingEng::step5(QString &word, int startR1, int startR2)
+{
+    int size = word.size() - 1;
+    if (word[size] == 'e')
+    {
+        if (size >= startR2)
+            word.chop(1);
+        else if (size >= startR1 && !isShort(word.left(size)))
+            word.chop(1);
+    }
+    else if (word[word.size() - 1] == 'l')
+    {
+        if (word.size() - 1 >= startR2 && word[word.size() - 2] == 'l')
+            word.chop(1);
+    }
+}
